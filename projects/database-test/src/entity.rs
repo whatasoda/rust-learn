@@ -3,8 +3,9 @@ pub mod entity {
         use super::recommendation::Recommendation;
         use super::tag::TagRegistry;
         use serde::{Deserialize, Serialize};
+        use std::iter::FromIterator;
 
-        #[derive(Serialize, Deserialize, Clone, Debug)]
+        #[derive(Serialize, Deserialize)]
         pub struct GameInput {
             pub id: u32,
             pub name: String,
@@ -13,7 +14,7 @@ pub mod entity {
             pub recommendations: Option<Vec<Recommendation>>,
         }
 
-        #[derive(Serialize, Deserialize, Clone, Debug)]
+        #[derive(Serialize, Deserialize)]
         pub struct Game {
             pub id: u32,
             pub name: String,
@@ -22,23 +23,20 @@ pub mod entity {
             pub recommendations: Option<Vec<Recommendation>>,
         }
         impl Game {
-            pub fn from_game_input(json: &GameInput, allTags: &mut TagRegistry) -> Self {
-                let tagsIds = match &json.tags {
+            pub fn from_game_input(json: GameInput, allTags: &mut TagRegistry) -> Self {
+                let tagsIds = match json.tags {
                     None => None,
                     Some(tags) => {
-                        let mut tagIds = Vec::<u32>::with_capacity(tags.len());
-                        for tag in tags {
-                            tagIds.push(allTags.get_id_by_tag(tag));
-                        }
-                        Some(tagIds)
+                        let iter = tags.into_iter().map(|tag| allTags.get_id_by_tag(tag));
+                        Some(Vec::from_iter(iter))
                     }
                 };
                 Game {
                     id: json.id,
-                    name: json.name.clone(),
+                    name: json.name,
                     tags: tagsIds,
                     releaseDate: json.releaseDate,
-                    recommendations: json.recommendations.as_ref().cloned(),
+                    recommendations: json.recommendations,
                 }
             }
         }
@@ -51,7 +49,6 @@ pub mod entity {
         use std::collections::HashMap;
         use std::fmt;
 
-        #[derive(Clone, Debug)]
         pub struct TagRegistry {
             map: HashMap<String, u32>,
         }
@@ -62,12 +59,12 @@ pub mod entity {
                 }
             }
 
-            pub fn get_id_by_tag(&mut self, tag: &String) -> u32 {
-                match self.map.get(tag) {
+            pub fn get_id_by_tag(&mut self, tag: String) -> u32 {
+                match self.map.get(&tag) {
                     Some(id) => *id,
                     None => {
                         let newId = self.map.len() as u32;
-                        self.map.insert(tag.clone(), newId);
+                        self.map.insert(tag, newId);
                         newId
                     }
                 }
@@ -120,14 +117,14 @@ pub mod entity {
 
     pub mod recommendation {
         use serde::{Deserialize, Serialize};
-        #[derive(Serialize, Deserialize, Clone, Debug)]
+        #[derive(Serialize, Deserialize, Clone)]
         pub struct Recommendation {
             pub date: u32,
             pub up: u32,
             pub down: u32,
         }
 
-        #[derive(Serialize, Clone, Debug)]
+        #[derive(Serialize, Clone)]
         pub struct RecommendationScore {
             pub up: u32,
             pub down: u32,

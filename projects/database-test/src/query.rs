@@ -20,19 +20,21 @@ pub mod query {
         use crate::entity::entity::game::Game;
         use std::collections::HashSet;
 
-        #[derive(Debug)]
+        use serde::Serialize;
+
+        #[derive(Serialize)]
         pub enum QueryInput {
             GameId(IdFilterInput),
             TagId(IdFilterInput),
         }
 
-        #[derive(Debug)]
+        #[derive(Serialize)]
         pub struct IdFilterInput {
             pub policy: FilterPolicy,
             pub list: Vec<u32>,
         }
 
-        #[derive(Debug)]
+        #[derive(Serialize)]
         pub enum FilterPolicy {
             Include,
             Exclude,
@@ -152,7 +154,9 @@ pub mod query {
         use crate::entity::entity::recommendation::{Recommendation, RecommendationScore};
         use num_integer::Integer;
         use num_traits::ToPrimitive;
+        use serde::Serialize;
 
+        #[derive(Serialize)]
         pub enum QueryInput {
             Date(SimpleRangeInput),
             Total(SimpleRangeInput),
@@ -161,15 +165,18 @@ pub mod query {
             Sum(ComplexRangeInput),
         }
         pub struct SimpleRange(Option<SimpleRangeInput>);
+        #[derive(Serialize)]
         pub struct SimpleRangeInput {
             pub min: i32,
             pub max: i32,
         }
         pub struct ComplexRange(Option<ComplexRangeInput>);
+        #[derive(Serialize)]
         pub struct ComplexRangeInput {
             pub format: RangeFormat,
             pub range: SimpleRangeInput,
         }
+        #[derive(Serialize)]
         pub enum RangeFormat {
             Pct { baseline: u32 },
             Count,

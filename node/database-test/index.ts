@@ -33,12 +33,14 @@ interface GameInput {
   recomendations: {}[] | null;
 }
 
-WebAssembly.instantiate(binary.buffer, externs)
+const bytesPerPage = 64 * 1024;
+
+WebAssembly.instantiate(binary.buffer, { ...externs })
   .then(async ({ instance }) => {
     interface Program {
       memory: WebAssembly.Memory;
       alloc(capacity: number): number;
-      dealloc(ptr: number, capacity: number): void;
+      // dealloc(ptr: number, capacity: number): void;
       init(ptr: number): void;
       persist(): void;
       updateUsers(ptr: number): void;
@@ -47,50 +49,39 @@ WebAssembly.instantiate(binary.buffer, externs)
       getFullJson(): number;
     }
     const program = (instance.exports as unknown) as Program;
-    console.log(program.memory.buffer.byteLength);
+    // program.memory.grow(10);
+    console.log(program.memory.buffer.byteLength / bytesPerPage);
 
-    program.memory.grow(17000);
     logger = (ptr, length) => {
       console.log(Buffer.from(program.memory.buffer, ptr, length).toString('utf-8'));
     };
     resolve = (ptr, length) => {
       const val = new Uint32Array(program.memory.buffer, ptr, length / 4);
       switch (val[0]) {
+        case 0:
+          console.log(Buffer.from(program.memory.buffer, val[1], val[2]).toString('base64'));
+          break;
         case 1:
           console.log(Buffer.from(program.memory.buffer, val[1], val[2]).toString('utf-8'));
-          break;
-        case 2:
-          switch (val[1]) {
-            case 0: {
-              console.log(Buffer.from(program.memory.buffer, val[2], val[3]).toString('utf-8'));
-              break;
-            }
-            case 1: {
-              console.log(Buffer.from(program.memory.buffer, val[2], val[3]).toString('base64'));
-            }
-          }
           break;
       }
     };
 
     const init = (snapshot: string) => {
-      const { pointer, dealloc } = writeSlice(Buffer.from(snapshot, 'base64'));
+      const { pointer } = writeSlice(Buffer.from(snapshot, 'base64'));
       program.init(pointer);
-      dealloc();
     };
 
     const persist = () => program.persist();
 
     const updateUsers = (users: User[]) => {
-      const { pointer, dealloc } = writeSlice(Buffer.from(JSON.stringify(users)));
+      const { pointer } = writeSlice(Buffer.from(JSON.stringify(users)));
       program.updateUsers(pointer);
-      dealloc();
     };
 
     const updateGames = (games: GameInput[]) => {
-      const { pointer, dealloc } = writeSlice(Buffer.from(JSON.stringify(games)));
+      const { pointer } = writeSlice(Buffer.from(JSON.stringify(games)));
       program.updateGames(pointer);
-      dealloc();
     };
 
     const getFullJson = () => program.getFullJson();
@@ -98,6 +89,7 @@ WebAssembly.instantiate(binary.buffer, externs)
     // AAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAwAAAAAAAABmb28BAAAAAQAAAAMAAAAAAAAAYmFy
     if (true) {
       init('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      await Promise.resolve();
       // updateUsers(['baz', 'quz', 'foo', 'bar'].map((name, id) => ({ id, name })));
       updateGames([
         { id: 0, name: 'hoge', releaseDate: 20000, recomendations: null, tags: ['Hoge', 'Fuga', 'タグ', '恐竜'] },
@@ -105,16 +97,13 @@ WebAssembly.instantiate(binary.buffer, externs)
         { id: 2, name: 'gwqhwq', releaseDate: 20000, recomendations: null, tags: ['Hoge', 'タグううう', '恐竜'] },
         { id: 3, name: 'gwqhe', releaseDate: 20000, recomendations: null, tags: ['タグ', 'ああああ'] },
       ]);
-      // const d = writeSlice(Buffer.from(Uint32Array.from([a.pointer]).buffer));
-      // persist();
-      // const e = writeSlice(Buffer.from(''));
-      // const a = createIdQuery(1, 0, [0]);
-      // const b = writeSlice(Buffer.from(''));
-      // program.filterGames(a.pointer, b.pointer);
-      // await Promise.resolve();
+
+      const a = createIdQuery(1, 0, [0]);
+      const d = pointerList([a.pointer]);
+      const b = writeSlice(Buffer.from(''));
+      program.filterGames(d.pointer, b.pointer);
       getFullJson();
-      // await Promise.resolve();
-      // persist();
+      persist();
     } else {
       init(
         'AAAAAAAAAAAEAAAAAAAAAAIAAAACAAAABgAAAAAAAABnd3Fod3EBBAAAAAAAAAAAAAAAAQAAAAQAAAADAAAAASBOAAAAAAAAAAAAAAAEAAAAAAAAAGhvZ2UBBAAAAAAAAAAAAAAAAQAAAAIAAAADAAAAASBOAAAAAQAAAAEAAAAGAAAAAAAAAGdlcWd3cQEEAAAAAAAAAAAAAAABAAAAAgAAAAMAAAABIE4AAAADAAAAAwAAAAUAAAAAAAAAZ3dxaGUBBAAAAAAAAAAAAAAAAQAAAAIAAAAFAAAAASBOAAAABgAAAAAAAAACAAAABgAAAAAAAADjgr/jgrAFAAAADAAAAAAAAADjgYLjgYLjgYLjgYIDAAAABgAAAAAAAADmgZDnq5wBAAAABAAAAAAAAABGdWdhBAAAAA8AAAAAAAAA44K/44Kw44GG44GG44GGAAAAAAQAAAAAAAAASG9nZQ==',
@@ -124,8 +113,8 @@ WebAssembly.instantiate(binary.buffer, externs)
 
     function alloc(capacity: number) {
       const pointer = program.alloc(capacity);
-      const dealloc = () => program.dealloc(pointer, capacity);
-      return { pointer, dealloc };
+      // const dealloc = () => program.dealloc(pointer, capacity);
+      return { pointer };
     }
 
     function writeBuffer(data: Buffer) {
@@ -179,6 +168,19 @@ WebAssembly.instantiate(binary.buffer, externs)
     //   }
     // }
 
+    function pointerList(pointers: number[]) {
+      const stackSize = 8; // 4 + 4
+      const listSize = pointers.length * 4;
+      const mem = alloc(stackSize + listSize);
+      const listStart = mem.pointer + 8;
+      const stack = new Uint32Array(program.memory.buffer, mem.pointer, stackSize << 2);
+      const list = new Uint32Array(program.memory.buffer, listStart, listSize << 2);
+      stack[0] = mem.pointer + 8;
+      stack[1] = pointers.length;
+      list.set(pointers);
+      return mem;
+    }
+
     /**
      * @param kind 0: GameId, 1: TagId
      * @param policy 0: Includes, 1: Excludes
@@ -187,7 +189,7 @@ WebAssembly.instantiate(binary.buffer, externs)
       const stackSize = 16; // 4 + 4 + 4 + 4
       const listSize = ids.length * 4;
       const mem = alloc(stackSize + listSize);
-      const stack = new Uint32Array(program.memory.buffer, mem.pointer, 4);
+      const stack = new Uint32Array(program.memory.buffer, mem.pointer, stackSize << 2);
       stack[0] = kind;
       stack[1] = policy;
       stack[2] = mem.pointer + stackSize;
